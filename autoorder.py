@@ -20,7 +20,7 @@ from telegram.constants import ParseMode
 #  ⚙️  KONFIGURASI — EDIT HANYA DI SINI SAJA
 # ══════════════════════════════════════════════
 BOT_TOKEN  = "8572342585:AAGP2FBBjlDHLzbviDzd6GxO7DtJNSQqxH8"
-ADMIN_IDS  = [1957639198]
+ADMIN_IDS  = [1908273541]
 API_KEY    = "kT0fRZLKZa1gFILQjy67SXQhNGV1PMvO"       # API Key dari dashboard Pakasir
 PAKASIR_PROJECT = "zero-store"      # Slug proyek dari dashboard Pakasir
 # ─────────────────────────────────────────────
