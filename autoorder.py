@@ -19,14 +19,14 @@ from telegram.constants import ParseMode
 # ══════════════════════════════════════════════
 #  ⚙️  KONFIGURASI — EDIT HANYA DI SINI SAJA
 # ══════════════════════════════════════════════
-BOT_TOKEN  = "ISI_TOKEN_BOT"
-ADMIN_IDS  = [123456789]
-API_KEY    = "ISI_API_KEY_PAKASIR"       # API Key dari dashboard Pakasir
-PAKASIR_PROJECT = "ISI_SLUG_PROYEK"      # Slug proyek dari dashboard Pakasir
+BOT_TOKEN  = "8572342585:AAGP2FBBjlDHLzbviDzd6GxO7DtJNSQqxH8"
+ADMIN_IDS  = [1957639198]
+API_KEY    = "kT0fRZLKZa1gFILQjy67SXQhNGV1PMvO"       # API Key dari dashboard Pakasir
+PAKASIR_PROJECT = "zero-store"      # Slug proyek dari dashboard Pakasir
 # ─────────────────────────────────────────────
 PAY_BASE      = "https://app.pakasir.com"
-STORE_NAME    = "NEXUS MARKETING"       # Nama toko (tampil di bot & nota)
-WEBSITE       = WEBSITE        # Website / link toko
+STORE_NAME    = "zero-store"       # Nama toko (tampil di bot & nota)
+WEBSITE       = "zero-store.com"        # Website / link toko
 DB_PATH       = "store.db"
 POLL_INTERVAL = 5
 EXPIRE_SEC    = 300
@@ -244,6 +244,9 @@ def generate_qris_image(qr_string: str) -> io.BytesIO | None:
     except Exception as e:
         log.error("generate_qris_image gagal: %s", e)
         return None
+
+
+async def check_qris(txid: str, amount: int = 0) -> bool:
     """Cek status pembayaran via Pakasir Transaction Detail API."""
     try:
         async with aiohttp.ClientSession() as s:
