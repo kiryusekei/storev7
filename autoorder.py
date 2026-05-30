@@ -21,9 +21,10 @@ from telegram.constants import ParseMode
 # ══════════════════════════════════════════════
 BOT_TOKEN  = "ISI_TOKEN_BOT"
 ADMIN_IDS  = [123456789]
-API_KEY    = "ISI_API_KEY_PAYMENT"
+API_KEY    = "ISI_API_KEY_PAKASIR"       # API Key dari dashboard Pakasir
+PAKASIR_PROJECT = "ISI_SLUG_PROYEK"      # Slug proyek dari dashboard Pakasir
 # ─────────────────────────────────────────────
-PAY_BASE      = "ISI_PAYMENT_BASE_URL"
+PAY_BASE      = "https://app.pakasir.com"
 STORE_NAME    = "NEXUS MARKETING"       # Nama toko (tampil di bot & nota)
 WEBSITE       = WEBSITE        # Website / link toko
 DB_PATH       = "store.db"
@@ -172,32 +173,94 @@ def esc(text):
 # ══════════════════════════════════════════════
 #              PAYMENT API
 # ══════════════════════════════════════════════
-async def create_qris(amount: int):
+async def create_qris(amount: int, order_id: str = None):
+    """Buat transaksi QRIS via Pakasir API."""
+    if order_id is None:
+        order_id = "INV-" + datetime.now().strftime("%Y%m%d%H%M%S")
     try:
+        payload = {
+            "project": PAKASIR_PROJECT,
+            "order_id": order_id,
+            "amount": amount,
+            "api_key": API_KEY,
+        }
         async with aiohttp.ClientSession() as s:
-            async with s.get(
-                f"{PAY_BASE}/deposit",
-                params={"amount": amount, "apikey": API_KEY},
+            async with s.post(
+                f"{PAY_BASE}/api/transactioncreate/qris",
+                json=payload,
                 timeout=aiohttp.ClientTimeout(total=10)
             ) as r:
                 if r.status == 200:
                     d = await r.json()
-                    if d.get("status") == "success":
-                        return d["data"]
+                    p = d.get("payment", {})
+                    if p:
+                        # Kembalikan format yang kompatibel dengan kode lama
+                        return {
+                            "order_id":       p.get("order_id", order_id),
+                            "amount":         p.get("amount", amount),
+                            "total_payment":  p.get("total_payment", amount),
+                            "qr_string":      p.get("payment_number", ""),
+                            "expired_at":     p.get("expired_at", ""),
+                        }
     except Exception as e:
         log.error("create_qris: %s", e)
     return None
 
-async def check_qris(txid: str) -> bool:
+def generate_qris_image(qr_string: str) -> io.BytesIO | None:
+    """
+    Generate gambar QR code dari QRIS string.
+    Mengembalikan BytesIO PNG siap kirim ke Telegram, atau None jika gagal.
+    """
+    try:
+        import qrcode
+        from qrcode.constants import ERROR_CORRECT_M
+
+        qr = qrcode.QRCode(
+            version=None,           # auto-size
+            error_correction=ERROR_CORRECT_M,
+            box_size=10,            # piksel per kotak → gambar ~500px
+            border=4,               # 4 modul border putih (standar QRIS)
+        )
+        qr.add_data(qr_string)
+        qr.make(fit=True)
+
+        # Buat gambar putih-hitam standar
+        img = qr.make_image(fill_color="black", back_color="white")
+
+        # Tambah padding 20px putih agar tidak terpotong Telegram
+        from PIL import Image as PILImage
+        pil_img = img.get_image() if hasattr(img, 'get_image') else img
+        # Pastikan mode RGB
+        pil_img = pil_img.convert("RGB")
+
+        padded = PILImage.new("RGB", (pil_img.width + 40, pil_img.height + 40), "white")
+        padded.paste(pil_img, (20, 20))
+
+        buf = io.BytesIO()
+        padded.save(buf, format="PNG", optimize=True)
+        buf.seek(0)
+        buf.name = "qris.png"   # Telegram butuh .name agar deteksi sebagai foto
+        return buf
+    except Exception as e:
+        log.error("generate_qris_image gagal: %s", e)
+        return None
+    """Cek status pembayaran via Pakasir Transaction Detail API."""
     try:
         async with aiohttp.ClientSession() as s:
             async with s.get(
-                f"{PAY_BASE}/status/payment",
-                params={"transaction_id": txid, "apikey": API_KEY},
+                f"{PAY_BASE}/api/transactiondetail",
+                params={
+                    "project":  PAKASIR_PROJECT,
+                    "order_id": txid,
+                    "amount":   amount,
+                    "api_key":  API_KEY,
+                },
                 timeout=aiohttp.ClientTimeout(total=10)
             ) as r:
                 if r.status == 200:
-                    return (await r.json()).get("paid", False)
+                    d = await r.json()
+                    status = d.get("transaction", {}).get("status", "")
+                    return status == "completed"
     except Exception as e:
         log.error("check_qris: %s", e)
     return False
@@ -1588,26 +1651,38 @@ async def _process_buy(q, ctx, uid, pid, qty, bypass=False):
         text="⏳ _Membuat QRIS pembayaran..._",
         parse_mode=ParseMode.MARKDOWN)
 
-    pay = await create_qris(price * qty)
+    order_id = "INV-{}-{}".format(uid, datetime.now().strftime("%Y%m%d%H%M%S"))
+    pay = await create_qris(price * qty, order_id)
     if not pay:
         await loading.edit_text("❌ Gagal membuat QRIS. Silakan coba lagi.")
         return
 
-    txid     = pay["transaction_id"]
-    qris_url = pay["qris_url"]
-    fee      = pay["fee"]
-    total    = pay["total_amount"]
-    exp_min  = pay.get("expired_minutes", 5)
+    txid      = pay["order_id"]
+    qr_string = pay["qr_string"]    # QRIS string dari Pakasir
+    fee       = pay["total_payment"] - pay["amount"]
+    total     = pay["total_payment"]
+    exp_min   = EXPIRE_SEC // 60
 
     save_transaction(uid, username, txid, pid, qty, total)
     await loading.delete()
 
+    # Generate QR image dari qr_string
+    qris_photo = generate_qris_image(qr_string)
+
     # Simpan message_id QRIS agar bisa dihapus setelah bayar
-    qris_msg = await ctx.bot.send_photo(
-        chat_id=uid,
-        photo=qris_url,
-        caption=fmt_invoice(name, qty, price, fee, total, exp_min, txid),
-        parse_mode=ParseMode.MARKDOWN)
+    caption_text = fmt_invoice(name, qty, price, fee, total, exp_min, txid)
+    if qris_photo:
+        qris_msg = await ctx.bot.send_photo(
+            chat_id=uid,
+            photo=qris_photo,
+            caption=caption_text,
+            parse_mode=ParseMode.MARKDOWN)
+    else:
+        # Fallback: kirim teks saja jika generate gambar gagal
+        qris_msg = await ctx.bot.send_message(
+            chat_id=uid,
+            text=caption_text,
+            parse_mode=ParseMode.MARKDOWN)
 
     ctx.application.create_task(
         _poll_payment(ctx.application, uid, username, txid, pid, qty,
@@ -1617,10 +1692,11 @@ async def _process_buy(q, ctx, uid, pid, qty, bypass=False):
 async def _poll_payment(app, user_id, username, txid, pid, qty,
                         prod_name, price, timeout, qris_msg_id=None):
     elapsed = 0
+    total_amount = price * qty  # simpan untuk cek API Pakasir
     while elapsed < timeout:
         await asyncio.sleep(POLL_INTERVAL)
         elapsed += POLL_INTERVAL
-        if await check_qris(txid):
+        if await check_qris(txid, total_amount):
             update_transaction_status(txid, "paid")
             # Hapus pesan QRIS setelah pembayaran berhasil
             if qris_msg_id:

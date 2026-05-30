@@ -59,16 +59,19 @@ while true; do
     warn "Harus berupa angka! Contoh: 123456789"
 done
 
-# API Key Payment
+# API Key Pakasir
 while true; do
-    read -p "  💳 API Key Payment Gateway: " API_KEY
+    read -p "  💳 API Key Pakasir (dari dashboard app.pakasir.com): " API_KEY
     [[ -n "$API_KEY" ]] && break
     warn "API Key tidak boleh kosong!"
 done
 
-# Payment Base URL
-read -p "  🌐 Payment Base URL [https://payment.vpnnexus.biz.id/api]: " PAY_BASE
-PAY_BASE="${PAY_BASE:-https://payment.vpnnexus.biz.id/api}"
+# Pakasir Project Slug
+while true; do
+    read -p "  🏷️  Pakasir Project Slug (dari dashboard app.pakasir.com): " PAKASIR_PROJECT
+    [[ -n "$PAKASIR_PROJECT" ]] && break
+    warn "Project Slug tidak boleh kosong!"
+done
 
 # Nama Toko
 while true; do
@@ -86,7 +89,7 @@ echo -e "${BOLD}═════════════════════�
 echo -e "  🤖 Token    : ${CYAN}${BOT_TOKEN:0:20}...${NC}"
 echo -e "  👤 Admin ID : ${CYAN}${ADMIN_ID}${NC}"
 echo -e "  💳 API Key  : ${CYAN}${API_KEY:0:15}...${NC}"
-echo -e "  🌐 Pay URL  : ${CYAN}${PAY_BASE}${NC}"
+echo -e "  🏷️  Slug     : ${CYAN}${PAKASIR_PROJECT}${NC}"
 echo -e "  🏪 Nama     : ${CYAN}${STORE_NAME}${NC}"
 echo -e "  🔗 Website  : ${CYAN}${WEBSITE}${NC}"
 echo -e "${BOLD}══════════════════════════════════════${NC}"
@@ -113,11 +116,13 @@ pip3 install -q --break-system-packages \
     python-telegram-bot==21.3 \
     aiohttp \
     pillow \
+    qrcode \
     2>/dev/null || \
 pip3 install -q \
     python-telegram-bot==21.3 \
     aiohttp \
-    pillow
+    pillow \
+    qrcode
 
 info "Dependensi berhasil diinstall ✅"
 
@@ -151,15 +156,15 @@ info "Menulis konfigurasi ke bot..."
 # Escape karakter khusus untuk sed
 ESC_TOKEN=$(printf '%s\n' "$BOT_TOKEN" | sed 's/[[\.*^$()+?{|]/\\&/g')
 ESC_APIKEY=$(printf '%s\n' "$API_KEY"  | sed 's/[[\.*^$()+?{|]/\\&/g')
-ESC_PAYBASE=$(printf '%s\n' "$PAY_BASE" | sed 's/[[\.*^$()+?{|]/\\&/g; s|/|\\/|g')
+ESC_SLUG=$(printf '%s\n' "$PAKASIR_PROJECT" | sed 's/[[\.*^$()+?{|]/\\&/g')
 ESC_STORE=$(printf '%s\n' "$STORE_NAME" | sed 's/[[\.*^$()+?{|]/\\&/g')
 ESC_WEB=$(printf '%s\n' "$WEBSITE" | sed 's/[[\.*^$()+?{|]/\\&/g')
 
 sed -i \
     -e "s|BOT_TOKEN  = \"ISI_TOKEN_BOT\"|BOT_TOKEN  = \"${ESC_TOKEN}\"|" \
     -e "s|ADMIN_IDS  = \[123456789\]|ADMIN_IDS  = [${ADMIN_ID}]|" \
-    -e "s|API_KEY    = \"ISI_API_KEY_PAYMENT\"|API_KEY    = \"${ESC_APIKEY}\"|" \
-    -e "s|PAY_BASE      = \"ISI_PAYMENT_BASE_URL\"|PAY_BASE      = \"${PAY_BASE}\"|" \
+    -e "s|API_KEY    = \"ISI_API_KEY_PAKASIR\"|API_KEY    = \"${ESC_APIKEY}\"|" \
+    -e "s|PAKASIR_PROJECT = \"ISI_SLUG_PROYEK\"|PAKASIR_PROJECT = \"${ESC_SLUG}\"|" \
     -e "s|STORE_NAME    = \"NEXUS MARKETING\"|STORE_NAME    = \"${ESC_STORE}\"|" \
     -e "s|WEBSITE       = \"nexusdev.web.id\"|WEBSITE       = \"${ESC_WEB}\"|" \
     autoorder.py
