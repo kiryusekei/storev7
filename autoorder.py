@@ -6,7 +6,8 @@
 ╚══════════════════════════════════════════════╝
 """
 
-import os, asyncio, sqlite3, aiohttp, logging, re, io
+import os, shutil, asyncio, sqlite3, aiohttp, logging, re, io
+from pathlib import Path
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -28,6 +29,9 @@ PAY_BASE      = "https://app.pakasir.com"
 STORE_NAME    = "zero-store"       # Nama toko (tampil di bot & nota)
 WEBSITE       = "zero-store.com"        # Website / link toko
 DB_PATH       = "store.db"
+BACKUP_DIR = "backup"
+
+Path(BACKUP_DIR).mkdir(exist_ok=True)
 POLL_INTERVAL = 5
 EXPIRE_SEC    = 300
 
@@ -89,6 +93,79 @@ def init_db():
 
 def db():
     return sqlite3.connect(DB_PATH)
+#backul
+def create_backup():
+    try:
+        Path(BACKUP_DIR).mkdir(exist_ok=True)
+
+        ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        backup_file = os.path.join(
+            BACKUP_DIR,
+            f"store_{ts}.db"
+        )
+
+        shutil.copy2(DB_PATH, backup_file)
+
+        backups = sorted(
+            Path(BACKUP_DIR).glob("*.db"),
+            key=os.path.getmtime,
+            reverse=True
+        )
+
+        if len(backups) > 20:
+            for f in backups[20:]:
+                try:
+                    os.remove(f)
+                except:
+                    pass
+
+        return backup_file
+
+    except Exception as e:
+        log.error(f"Backup Error : {e}")
+        return None
+#restore
+def restore_backup(path_db):
+
+    try:
+
+        if not os.path.exists(path_db):
+            return False,"File tidak ditemukan"
+
+        shutil.copy2(path_db, DB_PATH)
+
+        return True,"Restore berhasil"
+
+    except Exception as e:
+        return False,str(e)
+#notif
+async def send_backup(bot, chat_id):
+
+    file=create_backup()
+
+    if not file:
+        await bot.send_message(
+            chat_id,
+            "❌ Backup gagal."
+        )
+        return
+
+    with open(file,"rb") as f:
+
+        await bot.send_document(
+
+            chat_id=chat_id,
+
+            document=f,
+
+            filename=os.path.basename(file),
+
+            caption=(
+                "💾 Backup Database\n\n"
+                f"📁 {os.path.basename(file)}"
+            )
+
+        )
 
 def get_setting(key, default=None):
     r = db().execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
@@ -804,6 +881,9 @@ def kb_admin_main():
         [InlineKeyboardButton("🔔 Notifikasi Grup",        callback_data="adm_group_menu")],
         [InlineKeyboardButton(bc_label,                    callback_data="adm_toggle_bc")],
         [InlineKeyboardButton("📊 Statistik Toko",         callback_data="adm_stats")],
+        [InlineKeyboardButton("💾 Backup Database", callback_data="adm_backup")],
+        [InlineKeyboardButton("🔄 Restore Database", callback_data="adm_restore")],
+        [InlineKeyboardButton("📂 Daftar Backup", callback_data="adm_listbackup")],
         [InlineKeyboardButton("🔙 Menu Utama",             callback_data="main_menu")],
     ])
 
@@ -1104,6 +1184,63 @@ async def callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         else:
             await safe_edit(q, text, kb_main(uid in ADMIN_IDS))
         return
+        # backup
+        # backup
+    if d == "adm_backup":
+        await q.answer("Membuat backup...")
+
+        await send_backup(
+            ctx.bot,
+            uid
+        )
+
+        return
+
+    # restore
+        # restore
+    if d == "adm_restore":
+
+        ctx.user_data["state"] = "restore_db"
+
+        await q.message.reply_text(
+            "📤 Silakan kirim file backup (*.db)"
+        )
+
+        return
+    #listbackup
+    # daftar backup
+    if d == "adm_listbackup":
+
+        files = sorted(
+            Path(BACKUP_DIR).glob("*.db"),
+            reverse=True
+        )
+
+        if not files:
+            await safe_edit(
+                q,
+                "❌ Tidak ada file backup.",
+                kb_back_admin()
+            )
+            return
+
+        text = "💾 *Daftar Backup*\n\n"
+
+        for i, f in enumerate(files, 1):
+            size = round(f.stat().st_size / 1024, 2)
+            text += f"{i}. `{f.name}`\n"
+            text += f"   📦 {size} KB\n\n"
+
+        await safe_edit(
+            q,
+            text,
+            kb_back_admin()
+        )
+
+        return
+    
+    #restore
+
 
     # ── Pembelian / Katalog ───────────────────────────
     if d == "menu_purchase":
@@ -1810,8 +1947,66 @@ async def message_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    if not state:
-        return
+        if not state:
+            return
+
+    # ==========================
+    # RESTORE DATABASE
+    # ==========================
+    if ctx.user_data.get("state") == "restore_db":
+
+        if not update.message.document:
+            await update.message.reply_text(
+                "❌ Kirim file database (*.db)"
+            )
+            return
+
+        doc = update.message.document
+
+        if not doc.file_name.endswith(".db"):
+            await update.message.reply_text(
+                "❌ File harus berekstensi .db"
+            )
+            return
+
+        # lanjutkan kode restore...
+
+    os.makedirs("temp", exist_ok=True)
+
+    temp_file = os.path.join(
+        "temp",
+        "restore.db"
+    )
+
+    telegram_file = await doc.get_file()
+
+    await telegram_file.download_to_drive(
+        temp_file
+    )
+
+    # Backup database lama
+    backup = create_backup()
+
+    ok, msg = restore_backup(temp_file)
+
+    os.remove(temp_file)
+
+    ctx.user_data.pop("state", None)
+
+    if ok:
+
+        await update.message.reply_text(
+            "✅ Restore Database Berhasil\n\n"
+            f"Backup lama:\n{os.path.basename(backup)}"
+        )
+
+    else:
+
+        await update.message.reply_text(
+            f"❌ Restore gagal\n\n{msg}"
+        )
+
+    return
 
     # ── Tambah Produk: Nama ───────────────────────────
     if state == S_PROD_NAME:
@@ -2108,6 +2303,12 @@ def main():
         .write_timeout(10)
         .build()
     )
+    backup = create_backup()
+    if backup:
+        log.info(f"Startup Backup : {backup}")
+
+    app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("add", cmd_add))
 
     app.add_handler(CommandHandler("start",    cmd_start))
     app.add_handler(CommandHandler("add",      cmd_add))
