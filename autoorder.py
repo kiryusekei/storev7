@@ -21,7 +21,7 @@ from telegram.constants import ParseMode
 #  ⚙️  KONFIGURASI — EDIT HANYA DI SINI SAJA
 # ══════════════════════════════════════════════
 BOT_TOKEN  = "8572342585:AAGP2FBBjlDHLzbviDzd6GxO7DtJNSQqxH8"
-ADMIN_IDS  = [1908273541]
+ADMIN_IDS  = [1908273541,1210833546]
 API_KEY    = "4a4fa4359696b694ee412566437a26c4"       # API Key dari PaymentKu (nexusdev)
 PAKASIR_PROJECT = "zero-store"      # (tidak dipakai lagi, dibiarkan agar tidak menghapus variabel/fitur lain)
 # ─────────────────────────────────────────────
@@ -1965,44 +1965,43 @@ async def message_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # lanjutkan kode restore...
+        os.makedirs("temp", exist_ok=True)
 
-    os.makedirs("temp", exist_ok=True)
-
-    temp_file = os.path.join(
-        "temp",
-        "restore.db"
-    )
-
-    telegram_file = await doc.get_file()
-
-    await telegram_file.download_to_drive(
-        temp_file
-    )
-
-    # Backup database lama
-    backup = create_backup()
-
-    ok, msg = restore_backup(temp_file)
-
-    os.remove(temp_file)
-
-    ctx.user_data.pop("state", None)
-
-    if ok:
-
-        await update.message.reply_text(
-            "✅ Restore Database Berhasil\n\n"
-            f"Backup lama:\n{os.path.basename(backup)}"
+        temp_file = os.path.join(
+            "temp",
+            "restore.db"
         )
 
-    else:
+        telegram_file = await doc.get_file()
 
-        await update.message.reply_text(
-            f"❌ Restore gagal\n\n{msg}"
+        await telegram_file.download_to_drive(
+            temp_file
         )
 
-    return
+        # Backup database lama
+        backup = create_backup()
+
+        ok, msg = restore_backup(temp_file)
+
+        if os.path.exists(temp_file):
+            os.remove(temp_file)
+
+        ctx.user_data.pop("state", None)
+
+        if ok:
+
+            await update.message.reply_text(
+                "✅ Restore Database Berhasil\n\n"
+                f"Backup lama:\n{os.path.basename(backup)}"
+            )
+
+        else:
+
+            await update.message.reply_text(
+                f"❌ Restore gagal\n\n{msg}"
+            )
+
+        return
 
     # ── Tambah Produk: Nama ───────────────────────────
     if state == S_PROD_NAME:
