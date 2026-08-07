@@ -22,10 +22,10 @@ from telegram.constants import ParseMode
 # ══════════════════════════════════════════════
 BOT_TOKEN  = "8572342585:AAGP2FBBjlDHLzbviDzd6GxO7DtJNSQqxH8"
 ADMIN_IDS  = [1908273541]
-API_KEY    = "kT0fRZLKZa1gFILQjy67SXQhNGV1PMvO"       # API Key dari dashboard Pakasir
-PAKASIR_PROJECT = "zero-store"      # Slug proyek dari dashboard Pakasir
+API_KEY    = "4a4fa4359696b694ee412566437a26c4"       # API Key dari PaymentKu (nexusdev)
+PAKASIR_PROJECT = "zero-store"      # (tidak dipakai lagi, dibiarkan agar tidak menghapus variabel/fitur lain)
 # ─────────────────────────────────────────────
-PAY_BASE      = "https://app.pakasir.com"
+PAY_BASE      = "https://paymentku.nexusdev.my.id"
 STORE_NAME    = "zero-store"       # Nama toko (tampil di bot & nota)
 WEBSITE       = "zero-store.com"        # Website / link toko
 DB_PATH       = "store.db"
@@ -251,32 +251,28 @@ def esc(text):
 #              PAYMENT API
 # ══════════════════════════════════════════════
 async def create_qris(amount: int, order_id: str = None):
-    """Buat transaksi QRIS via Pakasir API."""
+    """Buat transaksi QRIS via PaymentKu API (nexusdev)."""
     if order_id is None:
         order_id = "INV-" + datetime.now().strftime("%Y%m%d%H%M%S")
     try:
-        payload = {
-            "project": PAKASIR_PROJECT,
-            "order_id": order_id,
-            "amount": amount,
-            "api_key": API_KEY,
-        }
         async with aiohttp.ClientSession() as s:
-            async with s.post(
-                f"{PAY_BASE}/api/transactioncreate/qris",
-                json=payload,
+            async with s.get(
+                f"{PAY_BASE}/api/deposit",
+                params={"amount": amount, "apikey": API_KEY},
                 timeout=aiohttp.ClientTimeout(total=10)
             ) as r:
                 if r.status == 200:
                     d = await r.json()
-                    p = d.get("payment", {})
-                    if p:
-                        # Kembalikan format yang kompatibel dengan kode lama
+                    p = d.get("data", {})
+                    if d.get("status") and p:
+                        # Kembalikan format yang kompatibel dengan kode lama.
+                        # "order_id" di sini diisi deposit_id dari PaymentKu
+                        # karena itulah ID yang harus dipakai untuk cek status.
                         return {
-                            "order_id":       p.get("order_id", order_id),
+                            "order_id":       p.get("deposit_id", order_id),
                             "amount":         p.get("amount", amount),
-                            "total_payment":  p.get("total_payment", amount),
-                            "qr_string":      p.get("payment_number", ""),
+                            "total_payment":  p.get("total_amount", amount),
+                            "qr_string":      p.get("qris_string", ""),
                             "expired_at":     p.get("expired_at", ""),
                         }
     except Exception as e:
@@ -324,23 +320,23 @@ def generate_qris_image(qr_string: str) -> io.BytesIO | None:
 
 
 async def check_qris(txid: str, amount: int = 0) -> bool:
-    """Cek status pembayaran via Pakasir Transaction Detail API."""
+    """Cek status pembayaran via PaymentKu Status API (nexusdev)."""
     try:
         async with aiohttp.ClientSession() as s:
             async with s.get(
-                f"{PAY_BASE}/api/transactiondetail",
+                f"{PAY_BASE}/api/status/payment",
                 params={
-                    "project":  PAKASIR_PROJECT,
-                    "order_id": txid,
-                    "amount":   amount,
-                    "api_key":  API_KEY,
+                    "transaction_id": txid,
+                    "apikey":         API_KEY,
                 },
                 timeout=aiohttp.ClientTimeout(total=10)
             ) as r:
                 if r.status == 200:
                     d = await r.json()
-                    status = d.get("transaction", {}).get("status", "")
-                    return status == "completed"
+                    status = d.get("data", {}).get("status", "")
+                    # Diasumsikan status sukses = "completed" atau "success",
+                    # sesuaikan jika dokumentasi PaymentKu memakai istilah lain.
+                    return status in ("completed", "success", "paid")
     except Exception as e:
         log.error("check_qris: %s", e)
     return False
@@ -1798,7 +1794,7 @@ async def _process_buy(q, ctx, uid, pid, qty, bypass=False):
         return
 
     txid      = pay["order_id"]
-    qr_string = pay["qr_string"]    # QRIS string dari Pakasir
+    qr_string = pay["qr_string"]    # QRIS string dari PaymentKu
     fee       = pay["total_payment"] - pay["amount"]
     total     = pay["total_payment"]
     exp_min   = EXPIRE_SEC // 60
@@ -1832,7 +1828,7 @@ async def _process_buy(q, ctx, uid, pid, qty, bypass=False):
 async def _poll_payment(app, user_id, username, txid, pid, qty,
                         prod_name, price, timeout, qris_msg_id=None):
     elapsed = 0
-    total_amount = price * qty  # simpan untuk cek API Pakasir
+    total_amount = price * qty  # simpan untuk cek API PaymentKu
     while elapsed < timeout:
         await asyncio.sleep(POLL_INTERVAL)
         elapsed += POLL_INTERVAL
