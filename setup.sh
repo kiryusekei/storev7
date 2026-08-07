@@ -59,11 +59,18 @@ while true; do
     warn "Harus berupa angka! Contoh: 123456789"
 done
 
-# API Key PaymentKu
+# API Key Pakasir
 while true; do
-    read -p "  💳 API Key PaymentKu (dari nexusdev): " API_KEY
+    read -p "  💳 API Key Pakasir (dari dashboard app.pakasir.com): " API_KEY
     [[ -n "$API_KEY" ]] && break
     warn "API Key tidak boleh kosong!"
+done
+
+# Pakasir Project Slug
+while true; do
+    read -p "  🏷️  Pakasir Project Slug (dari dashboard app.pakasir.com): " PAKASIR_PROJECT
+    [[ -n "$PAKASIR_PROJECT" ]] && break
+    warn "Project Slug tidak boleh kosong!"
 done
 
 # Nama Toko
@@ -82,6 +89,7 @@ echo -e "${BOLD}═════════════════════�
 echo -e "  🤖 Token    : ${CYAN}${BOT_TOKEN:0:20}...${NC}"
 echo -e "  👤 Admin ID : ${CYAN}${ADMIN_ID}${NC}"
 echo -e "  💳 API Key  : ${CYAN}${API_KEY:0:15}...${NC}"
+echo -e "  🏷️  Slug     : ${CYAN}${PAKASIR_PROJECT}${NC}"
 echo -e "  🏪 Nama     : ${CYAN}${STORE_NAME}${NC}"
 echo -e "  🔗 Website  : ${CYAN}${WEBSITE}${NC}"
 echo -e "${BOLD}══════════════════════════════════════${NC}"
@@ -148,13 +156,15 @@ info "Menulis konfigurasi ke bot..."
 # Escape karakter khusus untuk sed
 ESC_TOKEN=$(printf '%s\n' "$BOT_TOKEN" | sed 's/[[\.*^$()+?{|]/\\&/g')
 ESC_APIKEY=$(printf '%s\n' "$API_KEY"  | sed 's/[[\.*^$()+?{|]/\\&/g')
+ESC_SLUG=$(printf '%s\n' "$PAKASIR_PROJECT" | sed 's/[[\.*^$()+?{|]/\\&/g')
 ESC_STORE=$(printf '%s\n' "$STORE_NAME" | sed 's/[[\.*^$()+?{|]/\\&/g')
 ESC_WEB=$(printf '%s\n' "$WEBSITE" | sed 's/[[\.*^$()+?{|]/\\&/g')
 
 sed -i \
     -e "s|BOT_TOKEN  = \"ISI_TOKEN_BOT\"|BOT_TOKEN  = \"${ESC_TOKEN}\"|" \
     -e "s|ADMIN_IDS  = \[123456789\]|ADMIN_IDS  = [${ADMIN_ID}]|" \
-    -e "s|API_KEY    = \"ISI_API_KEY_PAYMENTKU\"|API_KEY    = \"${ESC_APIKEY}\"|" \
+    -e "s|API_KEY    = \"ISI_API_KEY_PAKASIR\"|API_KEY    = \"${ESC_APIKEY}\"|" \
+    -e "s|PAKASIR_PROJECT = \"ISI_SLUG_PROYEK\"|PAKASIR_PROJECT = \"${ESC_SLUG}\"|" \
     -e "s|STORE_NAME    = \"NEXUS MARKETING\"|STORE_NAME    = \"${ESC_STORE}\"|" \
     -e "s|WEBSITE       = \"nexusdev.web.id\"|WEBSITE       = \"${ESC_WEB}\"|" \
     autoorder.py
