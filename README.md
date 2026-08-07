@@ -52,8 +52,7 @@ Sebelum mulai, siapkan informasi berikut:
 ```
 ✅ Token Bot Telegram    → dari @BotFather
 ✅ Telegram ID kamu      → cek via @userinfobot
-✅ API Key Pakasir       → dari dashboard app.pakasir.com (halaman detail Proyek)
-✅ Project Slug Pakasir  → dari dashboard app.pakasir.com (halaman detail Proyek)
+✅ API Key PaymentKu     → dari nexusdev (paymentku.nexusdev.my.id)
 ✅ Nama Toko             → contoh: Toko VPN Murah
 ✅ Website / Link        → contoh: t.me/username (opsional)
 ```
@@ -62,7 +61,7 @@ Sebelum mulai, siapkan informasi berikut:
 
 > 💡 **Cara dapat Telegram ID:** Chat [@userinfobot](https://t.me/userinfobot) → ID kamu akan tampil
 
-> 💡 **Cara dapat API Key & Slug Pakasir:** Daftar di [app.pakasir.com](https://app.pakasir.com) → buat Proyek baru → catat **Slug** dan **API Key**
+> 💡 **Cara dapat API Key PaymentKu:** Hubungi [nexusdev](https://t.me/nexusweb_dev) untuk mendapatkan API Key PaymentKu
 
 ---
 
@@ -85,8 +84,7 @@ Installer akan menampilkan form interaktif. Isi satu per satu:
 ```
 🤖 Bot Token (dari @BotFather): 123456789:AAF...
 👤 Admin Telegram ID (angka): 987654321
-💳 API Key Pakasir: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-🏷️  Pakasir Project Slug: nama-proyek-kamu
+💳 API Key PaymentKu: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 🏪 Nama Toko (tampil di bot & nota): Toko VPN Ku
 🔗 Website / Link toko [default]: t.me/tokoku
 ```
@@ -132,7 +130,7 @@ pip3 install python-telegram-bot==21.3 aiohttp pillow qrcode
 
 # 3. Edit konfigurasi
 nano autoorder.py
-# Ubah: BOT_TOKEN, ADMIN_IDS, API_KEY, PAKASIR_PROJECT, STORE_NAME, WEBSITE
+# Ubah: BOT_TOKEN, ADMIN_IDS, API_KEY, STORE_NAME, WEBSITE
 
 # 4. Jalankan
 python3 autoorder.py
@@ -150,8 +148,7 @@ Semua konfigurasi ada di bagian atas file `autoorder.py`:
 # ══════════════════════════════════════════════
 BOT_TOKEN        = "TOKEN_BOT_KAMU"
 ADMIN_IDS        = [123456789]           # bisa lebih dari 1: [111, 222]
-API_KEY          = "API_KEY_PAKASIR"     # dari dashboard app.pakasir.com
-PAKASIR_PROJECT  = "slug-proyek-kamu"    # slug proyek dari app.pakasir.com
+API_KEY          = "API_KEY_PAYMENTKU"   # dari nexusdev (paymentku.nexusdev.my.id)
 STORE_NAME       = "Nama Toko Kamu"      # tampil di bot & nota
 WEBSITE          = "link-toko.com"       # tampil di footer nota
 ```
@@ -259,7 +256,7 @@ systemctl restart autoorder-bot
 pip3 install qrcode pillow --break-system-packages
 systemctl restart autoorder-bot
 ```
-> Library `qrcode` dibutuhkan untuk generate gambar QR dari string QRIS Pakasir.
+> Library `qrcode` dibutuhkan untuk generate gambar QR dari string QRIS PaymentKu.
 
 **Notifikasi grup tidak masuk?**
 - Pastikan bot sudah jadi **Admin** di grup
