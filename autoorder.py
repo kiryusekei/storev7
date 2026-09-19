@@ -25,7 +25,8 @@ ADMIN_IDS  = [1908273541,1210833546]
 API_KEY    = "4a4fa4359696b694ee412566437a26c4"       # API Key dari PaymentKu (nexusdev)
 PAKASIR_PROJECT = "zero-store"      # (tidak dipakai lagi, dibiarkan agar tidak menghapus variabel/fitur lain)
 # ─────────────────────────────────────────────
-PAY_BASE      = "https://paymentku.nexusdev.my.id"
+PAY_BASE      = "https://payotomatis.app"          # QRIS payotomatis (create + cek status)
+PAY_API_KEY   = "nexus6zfOrYSC533axAkD"            # API key payotomatis.app
 STORE_NAME    = "zero-store"       # Nama toko (tampil di bot & nota)
 WEBSITE       = "zero-store.com"        # Website / link toko
 DB_PATH       = "store.db"
@@ -33,7 +34,7 @@ BACKUP_DIR = "backup"
 
 Path(BACKUP_DIR).mkdir(exist_ok=True)
 POLL_INTERVAL = 5
-EXPIRE_SEC    = 300
+EXPIRE_SEC    = 1200    # QRIS payotomatis berlaku 20 menit
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 log = logging.getLogger(__name__)
@@ -251,29 +252,42 @@ def esc(text):
 #              PAYMENT API
 # ══════════════════════════════════════════════
 async def create_qris(amount: int, order_id: str = None):
-    """Buat transaksi QRIS via PaymentKu API (nexusdev)."""
+    """Buat transaksi QRIS via payotomatis.app (QRIS ShopeePay dinamis)."""
     if order_id is None:
         order_id = "INV-" + datetime.now().strftime("%Y%m%d%H%M%S")
     try:
         async with aiohttp.ClientSession() as s:
             async with s.get(
-                f"{PAY_BASE}/api/deposit",
-                params={"amount": amount, "apikey": API_KEY},
-                timeout=aiohttp.ClientTimeout(total=10)
+                f"{PAY_BASE}/api/createqris",
+                params={"amount": amount, "key": PAY_API_KEY},
+                timeout=aiohttp.ClientTimeout(total=15)
             ) as r:
                 if r.status == 200:
                     d = await r.json()
                     p = d.get("data", {})
-                    if d.get("status") and p:
-                        # Kembalikan format yang kompatibel dengan kode lama.
-                        # "order_id" di sini diisi deposit_id dari PaymentKu
-                        # karena itulah ID yang harus dipakai untuk cek status.
+                    if d.get("success") and p.get("order_sn"):
+                        # qr_image_url = URL gambar QR (api.qrserver.com) yang datanya
+                        # QRIS string mentah (param ?data=...). Ambil string mentahnya
+                        # supaya generator QR lokal (generate_qris_image) tetap dipakai.
+                        qr_string = ""
+                        from urllib.parse import urlparse, parse_qs, unquote
+                        try:
+                            q = parse_qs(urlparse(p.get("qr_image_url", "")).query)
+                            qr_string = unquote(q.get("data", [""])[0])
+                        except Exception:
+                            qr_string = ""
+                        if not qr_string:
+                            log.error("create_qris: qr_image_url tanpa data QRIS")
+                            return None
+                        # Format kompatibel dengan kode lama:
+                        # - order_id = order_sn (dipakai utk cek status)
+                        # - total_payment = amount (payotomatis tidak ada fee tambahan)
                         return {
-                            "order_id":       p.get("deposit_id", order_id),
+                            "order_id":       p.get("order_sn", order_id),
                             "amount":         p.get("amount", amount),
-                            "total_payment":  p.get("total_amount", amount),
-                            "qr_string":      p.get("qris_string", ""),
-                            "expired_at":     p.get("expired_at", ""),
+                            "total_payment":  p.get("amount", amount),
+                            "qr_string":      qr_string,
+                            "expired_at":     "",
                         }
     except Exception as e:
         log.error("create_qris: %s", e)
@@ -320,23 +334,23 @@ def generate_qris_image(qr_string: str) -> io.BytesIO | None:
 
 
 async def check_qris(txid: str, amount: int = 0) -> bool:
-    """Cek status pembayaran via PaymentKu Status API (nexusdev)."""
+    """Cek status pembayaran via payotomatis.app (order_sn -> paid)."""
     try:
         async with aiohttp.ClientSession() as s:
             async with s.get(
-                f"{PAY_BASE}/api/status/payment",
+                f"{PAY_BASE}/api/qris/status",
                 params={
-                    "transaction_id": txid,
-                    "apikey":         API_KEY,
+                    "order_sn":       txid,
+                    "key":            PAY_API_KEY,
+                    "mutasi_version": "v2",
                 },
-                timeout=aiohttp.ClientTimeout(total=10)
+                timeout=aiohttp.ClientTimeout(total=15)
             ) as r:
                 if r.status == 200:
                     d = await r.json()
-                    status = d.get("data", {}).get("status", "")
-                    # Diasumsikan status sukses = "completed" atau "success",
-                    # sesuaikan jika dokumentasi PaymentKu memakai istilah lain.
-                    return status in ("completed", "success", "paid")
+                    # Backend payotomatis sudah menerapkan fix anti "pembayaran hantu"
+                    # (baris pre-booked ShopeePay dihitung unpaid), jadi cukup baca "paid".
+                    return bool(d.get("paid"))
     except Exception as e:
         log.error("check_qris: %s", e)
     return False
@@ -1263,7 +1277,7 @@ async def callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             "5\\. Scan QR Code QRIS yang muncul\n"
             "6\\. Produk otomatis dikirim setelah bayar ✅\n\n"
             "📋 *Ketentuan:*\n"
-            "├ ⏱️ Pembayaran berlaku *5 menit*\n"
+            "├ ⏱️ Pembayaran berlaku *20 menit*\\n"
             "├ 🔒 Produk _Non\\-refundable_\n"
             "└ 📞 Hubungi admin jika ada kendala\n\n"
             "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
